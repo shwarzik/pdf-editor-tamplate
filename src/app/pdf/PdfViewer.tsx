@@ -13,6 +13,7 @@ export interface PdfViewerProps {
 export default function PdfViewer({ doc, fileUrl, pageNumbers }: PdfViewerProps) {
   const zoom = usePdfStore((state) => state.zoom);
   const rotations = usePdfStore((state) => state.rotations);
+  const editMode = usePdfStore((state) => state.editMode);
 
   if (!doc || pageNumbers.length === 0) {
     return null;
@@ -27,6 +28,7 @@ export default function PdfViewer({ doc, fileUrl, pageNumbers }: PdfViewerProps)
           pageNumber={pageNumber}
           zoom={zoom}
           rotation={rotations[pageNumber] ?? 0}
+          editMode={editMode}
         />
       ))}
     </div>

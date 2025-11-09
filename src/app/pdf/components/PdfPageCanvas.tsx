@@ -6,14 +6,16 @@ interface PdfPageCanvasProps {
   pageNumber: number;
   zoom: number;
   rotation: number;
+  editMode: boolean;
 }
 
-export function PdfPageCanvas({ doc, pageNumber, zoom, rotation }: PdfPageCanvasProps) {
+export function PdfPageCanvas({ doc, pageNumber, zoom, rotation, editMode }: PdfPageCanvasProps) {
   const { registerCanvas, isRendering } = useFabricPageRender({
     doc,
     pageNumber,
     zoom,
     rotation,
+    editMode,
   });
 
   return (
@@ -23,7 +25,7 @@ export function PdfPageCanvas({ doc, pageNumber, zoom, rotation }: PdfPageCanvas
     >
       <canvas
         ref={registerCanvas}
-        className={`block rounded-xl border border-slate-800/70 bg-black/60 transition-opacity duration-150 ${isRendering ? "opacity-70" : "opacity-100"}`}
+        className={`block rounded-xl border border-slate-800/70 transition-opacity duration-150 ${isRendering ? "opacity-70" : "opacity-100"}`}
       />
 
       {isRendering && (

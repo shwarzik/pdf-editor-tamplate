@@ -4,9 +4,11 @@ import { ZOOM_DEFAULT } from "./viewer";
 interface PdfState {
   zoom: number;
   rotations: Record<number, number>;
+  editMode: boolean;
   setZoom: (v: number) => void;
   setRotation: (page: number, v: number) => void;
   resetRotations: () => void;
+  setEditMode: (v: boolean) => void;
 }
 
 const normalizeRotation = (value: number) => {
@@ -17,6 +19,7 @@ const normalizeRotation = (value: number) => {
 export const usePdfStore = create<PdfState>((set) => ({
   zoom: ZOOM_DEFAULT,
   rotations: {},
+  editMode: false,
   setZoom: (v) => set({ zoom: v }),
   setRotation: (page, v) =>
     set((state) => ({
@@ -26,4 +29,5 @@ export const usePdfStore = create<PdfState>((set) => ({
       },
     })),
   resetRotations: () => set({ rotations: {} }),
+  setEditMode: (v) => set({ editMode: v }),
 }));

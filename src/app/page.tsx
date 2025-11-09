@@ -10,7 +10,7 @@ import {
   type ChangeEvent,
   type ComponentType,
 } from "react";
-import { Upload, ZoomIn, ZoomOut } from "lucide-react";
+import { Upload, ZoomIn, ZoomOut, Edit3 } from "lucide-react";
 import { usePdfStore } from "@/lib/store";
 import type { PdfViewerProps } from "./pdf/PdfViewer";
 import { ZOOM_MIN, ZOOM_MAX, ZOOM_STEP, ZOOM_DEFAULT } from "@/lib/viewer";
@@ -39,6 +39,8 @@ export default function Page() {
   const resetRotations = usePdfStore((state) => state.resetRotations);
   const rotations = usePdfStore((state) => state.rotations);
   const setRotation = usePdfStore((state) => state.setRotation);
+  const editMode = usePdfStore((state) => state.editMode);
+  const setEditMode = usePdfStore((state) => state.setEditMode);
   const { doc, pageCount, loading, error } = usePdfDocument(fileUrl);
   const [scrollAreaHeight, setScrollAreaHeight] = useState<number | null>(null);
   const scrollAreaRef = useRef<HTMLDivElement>(null);
@@ -371,6 +373,21 @@ export default function Page() {
               Reset
             </button>
           </div>
+
+          <button
+            type="button"
+            onClick={() => setEditMode(!editMode)}
+            disabled={!hasDocument}
+            className={`flex items-center gap-2 rounded-2xl border px-4 py-3 text-sm font-medium transition ${
+              editMode
+                ? "border-blue-500/70 bg-blue-500/20 text-blue-300 hover:bg-blue-500/30"
+                : "border-slate-700/80 bg-slate-900/60 text-slate-200 hover:border-slate-500 hover:bg-slate-900"
+            } disabled:cursor-not-allowed disabled:opacity-40`}
+            aria-label="Toggle edit mode"
+          >
+            <Edit3 className="h-5 w-5" />
+            <span>{editMode ? "Editing" : "Edit"}</span>
+          </button>
         </div>
 
         <div className="mt-1 flex flex-1 flex-col gap-4">
