@@ -19,7 +19,7 @@ export default function PdfViewer({ doc, fileUrl, pageNumbers }: PdfViewerProps)
   }
 
   return (
-    <div className="flex flex-col gap-8">
+    <div className="flex flex-col gap-2">
       {pageNumbers.map((pageNumber) => (
         <PdfPageCanvas
           key={`${fileUrl}-page-${pageNumber}`}

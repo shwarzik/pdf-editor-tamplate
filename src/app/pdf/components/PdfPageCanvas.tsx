@@ -19,7 +19,7 @@ export function PdfPageCanvas({ doc, pageNumber, zoom, rotation }: PdfPageCanvas
   return (
     <div
       id={`pdf-page-${pageNumber}`}
-      className="relative flex min-w-max justify-center py-4"
+      className="relative flex min-w-max justify-center p-2"
     >
       <canvas
         ref={registerCanvas}

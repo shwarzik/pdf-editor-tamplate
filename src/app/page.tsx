@@ -18,6 +18,7 @@ import { PdfMinimap } from "./pdf/components/PdfMinimap";
 import { DocumentSkeleton } from "./pdf/components/DocumentSkeleton";
 import { ErrorBanner } from "./pdf/components/ErrorBanner";
 import SimpleBar from "simplebar-react";
+import type SimpleBarCore from "simplebar-core";
 import "simplebar-react/dist/simplebar.min.css";
 import { usePdfDocument } from "./pdf/hooks/usePdfDocument";
 
@@ -41,6 +42,9 @@ export default function Page() {
   const { doc, pageCount, loading, error } = usePdfDocument(fileUrl);
   const [scrollAreaHeight, setScrollAreaHeight] = useState<number | null>(null);
   const scrollAreaRef = useRef<HTMLDivElement>(null);
+  const simpleBarRef = useRef<SimpleBarCore | null>(null);
+  const activePageRef = useRef<number | null>(null);
+  const [activePage, setActivePage] = useState<number | null>(null);
   const pendingFitRef = useRef(false);
 
   const hasDocument = useMemo(() => Boolean(fileUrl), [fileUrl]);
@@ -57,6 +61,29 @@ export default function Page() {
       }
     };
   }, [fileUrl]);
+
+  useEffect(() => {
+    if (!hasDocument) {
+      activePageRef.current = null;
+      setActivePage(null);
+    }
+  }, [hasDocument]);
+
+  useEffect(() => {
+    if (!contentReady) {
+      return;
+    }
+
+    const firstPage = pageNumbers[0];
+
+    if (
+      firstPage !== undefined &&
+      (activePageRef.current === null || !pageNumbers.includes(activePageRef.current))
+    ) {
+      activePageRef.current = firstPage;
+      setActivePage(firstPage);
+    }
+  }, [contentReady, pageNumbers]);
 
   useEffect(() => {
     if (!hasDocument) {
@@ -161,6 +188,85 @@ export default function Page() {
     };
   }, [doc, scrollAreaHeight, setZoom]);
 
+  useEffect(() => {
+    if (!contentReady) {
+      return;
+    }
+
+    const simpleBarInstance = simpleBarRef.current;
+    const scrollElement = simpleBarInstance?.getScrollElement();
+
+    if (!scrollElement) {
+      return;
+    }
+
+    const observedElements = pageNumbers
+      .map((pageNumber) => document.getElementById(`pdf-page-${pageNumber}`))
+      .filter((element): element is HTMLElement => Boolean(element));
+
+    if (observedElements.length === 0) {
+      return;
+    }
+
+    const ratios = new Map<number, number>();
+    pageNumbers.forEach((pageNumber) => ratios.set(pageNumber, 0));
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        let changed = false;
+
+        for (const entry of entries) {
+          const id = entry.target.id ?? "";
+          if (!id.startsWith("pdf-page-")) {
+            continue;
+          }
+
+          const pageNumber = Number(id.replace("pdf-page-", ""));
+          if (!Number.isFinite(pageNumber)) {
+            continue;
+          }
+
+          ratios.set(pageNumber, entry.intersectionRatio);
+          changed = true;
+        }
+
+        if (!changed) {
+          return;
+        }
+
+        let bestPage: number | null = null;
+        let bestRatio = -1;
+
+        for (const pageNumber of pageNumbers) {
+          const ratio = ratios.get(pageNumber) ?? 0;
+          if (ratio > bestRatio) {
+            bestRatio = ratio;
+            bestPage = pageNumber;
+          }
+        }
+
+        if (bestPage !== null && bestPage !== activePageRef.current) {
+          activePageRef.current = bestPage;
+          setActivePage(bestPage);
+        }
+      },
+      {
+        root: scrollElement,
+        threshold: [0, 0.25, 0.5, 0.75, 1],
+      }
+    );
+
+    observedElements.forEach((element) => observer.observe(element));
+
+    return () => {
+      observer.disconnect();
+    };
+  }, [contentReady, pageNumbers, scrollAreaHeight, zoom, loading]);
+
+  useEffect(() => {
+    simpleBarRef.current?.recalculate();
+  }, [zoom, pageNumbers.length]);
+
   const handleUpload = (e: ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) {
@@ -181,6 +287,32 @@ export default function Page() {
     },
     [rotations, setRotation]
   );
+
+  const handleSelectPage = useCallback((pageNumber: number) => {
+    const target = document.getElementById(`pdf-page-${pageNumber}`);
+
+    if (!target) {
+      return;
+    }
+
+    const scrollElement = simpleBarRef.current?.getScrollElement();
+
+    if (scrollElement) {
+      const scrollRect = scrollElement.getBoundingClientRect();
+      const targetRect = target.getBoundingClientRect();
+      const offset = targetRect.top - scrollRect.top + scrollElement.scrollTop;
+
+      scrollElement.scrollTo({
+        top: offset,
+        behavior: "smooth",
+      });
+    } else {
+      target.scrollIntoView({ behavior: "smooth", block: "start" });
+    }
+
+    activePageRef.current = pageNumber;
+    setActivePage(pageNumber);
+  }, []);
 
   const zoomIn = () => setZoom(Math.min(ZOOM_MAX, zoom + ZOOM_STEP));
   const zoomOut = () => setZoom(Math.max(ZOOM_MIN, zoom - ZOOM_STEP));
@@ -250,10 +382,13 @@ export default function Page() {
                   pageNumbers={pageNumbers}
                   rotations={rotations}
                   onRotate={handleRotate}
+                  activePage={activePage}
+                  onSelectPage={handleSelectPage}
                 />
               ) : null}
 
               <div
+                id="pdf-scroll-area"
                 ref={scrollAreaRef}
                 className="relative flex-1 min-h-0 min-w-0 rounded-xl border border-slate-800/60 bg-slate-950/60"
                 style={
@@ -262,7 +397,11 @@ export default function Page() {
                     : undefined
                 }
               >
-                <SimpleBar style={{ height: "100%" }} className="h-full">
+                <SimpleBar
+                  ref={simpleBarRef}
+                  style={{ height: "100%" }}
+                  className="h-full"
+                >
                   {loading && <DocumentSkeleton />}
                   {error && <ErrorBanner message={error} />}
                   {contentReady && doc && (
