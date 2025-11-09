@@ -6,7 +6,7 @@ import type {
   RenderParameters,
   RenderTask,
 } from "pdfjs-dist/types/src/display/api";
-import type { Canvas as FabricCanvas, FabricImage, FabricObject } from "fabric";
+import { classRegistry, type Canvas as FabricCanvas, type FabricImage, type FabricObject } from "fabric";
 
 export interface UseFabricPageRenderArgs {
   doc: PDFDocumentProxy;
@@ -47,36 +47,33 @@ export function useFabricPageRender({
       fabricRef.current = null;
     };
   }, []);
-
   // Handle edit mode changes
   useEffect(() => {
     const fabricCanvas = fabricRef.current;
     if (!fabricCanvas) return;
-
     // Update canvas selection mode
     fabricCanvas.selection = editMode;
-
     // Update all user objects visibility and interactivity
     userObjectsRef.current.forEach((obj) => {
       obj.set({
         selectable: editMode,
         evented: editMode,
+        visible: editMode, // Always visible
         editable: editMode,
-        visible: true, // Always visible, but with different appearance
-        backgroundColor: editMode ? "rgba(255, 255, 255, 1)" : "transparent", // Light blue background
-        strokeWidth: 2,
-        strokeDashArray: editMode ? [10, 5] : undefined, // Dashed border
-        borderColor: "#3b82f6",
-        cornerColor: "#3b82f6",
-        cornerStyle: "circle",
-        transparentCorners: false,
-        cornerSize: 5,
-        padding: 2, // Add padding inside the border
+        // Styling for the selection box (container/bounding box)
+        borderColor: "#3b82f6", // Blue border for selection box
+        borderScaleFactor: 1, // Border thickness
+        cornerColor: "#3b82f6", // Blue corner handles
+        cornerStrokeColor: "#3b82f6",
+        cornerStyle: "circle", // Circular corner handles
+        transparentCorners: false, // Solid corners
+        cornerSize: editMode ? 5 : 0, // Show handles only in edit mode
+        padding: 2, // Space between text and selection border
       });
     });
 
     fabricCanvas.requestRenderAll();
-  }, [editMode]);
+  }, [isRendering, editMode]);
 
   useEffect(() => {
     const canvasEl = canvasRef.current;
@@ -265,7 +262,7 @@ export function useFabricPageRender({
               text: "Centered Comment",
               left: viewport.width / 2 - 120,
               top: viewport.height / 2 - 30,
-              width: 240,
+              width: 180,
               fontSize: 20,
               fill: "#e599f7",
               fontFamily: "Arial",
@@ -283,19 +280,17 @@ export function useFabricPageRender({
               selectable: editMode,
               editable: editMode,
               evented: editMode,
-              visible: true,
+              visible: editMode,
               hasControls: true,
               hasBorders: true,
-              backgroundColor: editMode ? "rgba(59, 130, 246, 0.05)" : "transparent",
-              stroke: editMode ? "#3b82f6" : "transparent",
-              strokeWidth: 2,
-              strokeDashArray: editMode ? [10, 5] : undefined,
               borderColor: "#3b82f6",
+              borderScaleFactor: 2,
               cornerColor: "#3b82f6",
+              cornerStrokeColor: "#3b82f6",
               cornerStyle: "circle",
               transparentCorners: false,
-              cornerSize: 8,
-              padding: 5,
+              cornerSize: 5,
+              padding: 2,
             })
           );
 
