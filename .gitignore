@@ -1,0 +1,87 @@
+node_modules/
+
+# Node
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+package-lock.json
+yarn.lock
+.pnp.*
+
+# Next.js
+.next/
+out/
+.next/cache
+
+# Build output
+dist/
+build/
+lib/
+
+# Production
+.vercel/
+.now/
+
+# Environment variables
+.env
+.env.*.local
+.env.local
+
+# Logs
+logs/
+*.log
+npm-debug.log*
+
+# OS files
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# IDEs and editors
+.vscode/
+.idea/
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+
+# TypeScript
+*.tsbuildinfo
+
+# Coverage
+coverage/
+.nyc_output/
+
+# Cache
+.cache/
+.parcel-cache/
+
+# Yarn v2+ cache (if used)
+.yarn/*
+!.yarn/releases
+!.yarn/plugins
+!.yarn/sdks
+!.yarn/versions
+
+# Misc
+*.tgz
+*.gz
+*.zip
+*.log
+
+# ESLint cache
+.eslintcache
+
+# Storybook
+.storybook/
+
+# Prevent committing local OS-specific files
+Thumbs.db
+
+# Optional: ignore local env files used by some editors
+local.env
+
+# End of file
+
+node_modules
