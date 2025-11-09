@@ -17,7 +17,6 @@ out/
 # Build output
 dist/
 build/
-lib/
 
 # Production
 .vercel/
