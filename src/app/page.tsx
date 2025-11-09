@@ -17,6 +17,8 @@ import { ZOOM_MIN, ZOOM_MAX, ZOOM_STEP, ZOOM_DEFAULT } from "@/lib/viewer";
 import { PdfMinimap } from "./pdf/components/PdfMinimap";
 import { DocumentSkeleton } from "./pdf/components/DocumentSkeleton";
 import { ErrorBanner } from "./pdf/components/ErrorBanner";
+import SimpleBar from "simplebar-react";
+import "simplebar-react/dist/simplebar.min.css";
 import { usePdfDocument } from "./pdf/hooks/usePdfDocument";
 
 const PdfViewer = dynamic<PdfViewerProps>(() => import("./pdf/PdfViewer"), {
@@ -134,9 +136,9 @@ export default function Page() {
           return;
         }
 
-        const snapped = Math.round(rawPercent / ZOOM_STEP) * ZOOM_STEP;
+        
+        const snapped = Math.floor(rawPercent / ZOOM_STEP) * ZOOM_STEP;
         const clamped = Math.min(ZOOM_MAX, Math.max(ZOOM_MIN, snapped));
-
         setZoom(clamped);
         pendingFitRef.current = false;
       } catch (error) {
@@ -185,7 +187,7 @@ export default function Page() {
   const resetZoom = () => setZoom(ZOOM_DEFAULT);
   return (
     <main className="min-h-screen bg-linear-to-br from-slate-950 via-slate-900 to-slate-950 px-2 text-slate-50">
-      <section className="flex flex-1 flex-col rounded-3xl border border-slate-800/60 bg-slate-900/60 p-2 shadow-[0_12px_80px_-28px_rgba(148,163,184,0.4)] backdrop-blur">
+      <section className="flex flex-1 flex-col rounded-3xl border border-slate-800/60 bg-slate-900/60 p-2 shadow-[0_12px_80px_-28px_rgba(148,163,184,0.4)] h-[calc(100vh-1rem)] backdrop-blur">
         <div className="flex flex-wrap items-center gap-4">
           <label className="group flex cursor-pointer items-center gap-3 rounded-2xl border border-dashed border-slate-700/80 bg-slate-900/60 px-4 py-3 text-sm font-medium text-slate-200 transition hover:border-slate-500 hover:bg-slate-900">
             <Upload className="h-5 w-5 text-slate-400 transition group-hover:text-slate-200" />
@@ -241,7 +243,7 @@ export default function Page() {
 
         <div className="mt-1 flex flex-1 flex-col gap-4">
           {hasDocument ? (
-            <div className="flex flex-1 min-h-0 gap-4 rounded-2xl border border-slate-800/60 bg-slate-950/40 p-4">
+              <div className="flex flex-1 min-h-0 gap-4 rounded-2xl border border-slate-800/60 bg-slate-950/40 p-4">
               {contentReady && doc ? (
                 <PdfMinimap
                   doc={doc}
@@ -253,22 +255,24 @@ export default function Page() {
 
               <div
                 ref={scrollAreaRef}
-                className="relative flex-1 min-h-0 overflow-x-auto overflow-y-auto rounded-xl border border-slate-800/60 bg-slate-950/60"
+                className="relative flex-1 min-h-0 min-w-0 rounded-xl border border-slate-800/60 bg-slate-950/60"
                 style={
                   scrollAreaHeight
                     ? { height: `${scrollAreaHeight}px` }
                     : undefined
                 }
               >
-                {loading && <DocumentSkeleton />}
-                {error && <ErrorBanner message={error} />}
-                {contentReady && doc && (
-                  <PdfViewer
-                    doc={doc}
-                    fileUrl={fileUrl}
-                    pageNumbers={pageNumbers}
-                  />
-                )}
+                <SimpleBar style={{ height: "100%" }} className="h-full">
+                  {loading && <DocumentSkeleton />}
+                  {error && <ErrorBanner message={error} />}
+                  {contentReady && doc && (
+                    <PdfViewer
+                      doc={doc}
+                      fileUrl={fileUrl}
+                      pageNumbers={pageNumbers}
+                    />
+                  )}
+                </SimpleBar>
               </div>
             </div>
           ) : (
