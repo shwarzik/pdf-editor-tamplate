@@ -6,7 +6,7 @@ import type {
   RenderParameters,
   RenderTask,
 } from "pdfjs-dist/types/src/display/api";
-import { classRegistry, type Canvas as FabricCanvas, type FabricImage, type FabricObject } from "fabric";
+import { type Canvas as FabricCanvas, type FabricImage, type FabricObject } from "fabric";
 
 export interface UseFabricPageRenderArgs {
   doc: PDFDocumentProxy;
@@ -326,6 +326,7 @@ export function useFabricPageRender({
       cancelled = true;
       renderTask?.cancel();
     };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [doc, pageNumber, rotation, zoom]);
 
   const registerCanvas = useCallback((element: HTMLCanvasElement | null) => {
