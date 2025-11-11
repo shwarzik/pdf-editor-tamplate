@@ -7,6 +7,7 @@ import type {
   RenderTask,
 } from "pdfjs-dist/types/src/display/api";
 import { type Canvas as FabricCanvas, type FabricImage, type FabricObject } from "fabric";
+import type { ParsedBlock, ParsedPage } from "@/lib/store";
 
 export interface UseFabricPageRenderArgs {
   doc: PDFDocumentProxy;
@@ -14,6 +15,7 @@ export interface UseFabricPageRenderArgs {
   zoom: number;
   rotation: number;
   editMode: boolean;
+  parsedPage?: ParsedPage;
 }
 
 export interface UseFabricPageRenderResult {
@@ -27,6 +29,7 @@ export function useFabricPageRender({
   zoom,
   rotation,
   editMode,
+  parsedPage,
 }: UseFabricPageRenderArgs): UseFabricPageRenderResult {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const fabricRef = useRef<FabricCanvas | null>(null);
@@ -58,7 +61,7 @@ export function useFabricPageRender({
       obj.set({
         selectable: editMode,
         evented: editMode,
-        visible: editMode, // Always visible
+        visible: editMode, // Keep text visible even when not in edit mode
         editable: editMode,
         // Styling for the selection box (container/bounding box)
         borderColor: "#3b82f6", // Blue border for selection box
@@ -74,6 +77,52 @@ export function useFabricPageRender({
 
     fabricCanvas.requestRenderAll();
   }, [isRendering, editMode]);
+
+  // If user toggles editMode on after initial render, add parsed blocks
+  useEffect(() => {
+    const fabricCanvas = fabricRef.current;
+    if (!fabricCanvas) return;
+    if (!editMode) return;
+    if (userObjectsRef.current.length > 0) return;
+    if (!parsedPage || parsedPage.blocks.length === 0) return;
+    const lastViewport = prevViewportRef.current;
+    if (!lastViewport) return;
+
+    (async () => {
+      const { Textbox } = await import("fabric");
+      const ratioX = lastViewport.width / parsedPage.width;
+      const ratioY = lastViewport.height / parsedPage.height;
+      const createdTextboxes = parsedPage.blocks.map((blk: ParsedBlock) =>
+        new Textbox(blk.text, {
+          left: blk.x * ratioX,
+          top: blk.y * ratioY,
+          width: Math.max(4, blk.width * ratioX),
+          fontSize: Math.max(4, blk.fontSize * ratioY),
+          lineHeight: blk.lineHeight,
+          fill: blk.fill,
+          fontFamily: blk.fontFamily,
+          fontWeight: blk.fontWeight,
+          selectable: true,
+          editable: true,
+          evented: true,
+          visible: true,
+          hasControls: true,
+          hasBorders: true,
+          borderColor: "#3b82f6",
+          borderScaleFactor: 2,
+          cornerColor: "#3b82f6",
+          cornerStrokeColor: "#3b82f6",
+          cornerStyle: "circle",
+          transparentCorners: false,
+          cornerSize: 5,
+          padding: 2,
+        })
+      );
+      createdTextboxes.forEach((obj) => fabricCanvas.add(obj));
+      userObjectsRef.current = createdTextboxes;
+      fabricCanvas.requestRenderAll();
+    })().catch((e) => console.error("failed to add parsed blocks", e));
+  }, [editMode, parsedPage]);
 
   useEffect(() => {
     const canvasEl = canvasRef.current;
@@ -217,70 +266,25 @@ export function useFabricPageRender({
             }
             fabricCanvas!.add(obj);
           });
-        } else if (isNewCanvas) {
-          // Add multiple mock textboxes only for new canvas (first render)
+        } else if (isNewCanvas && editMode && parsedPage && parsedPage.blocks.length > 0) {
           const { Textbox } = await import("fabric");
-          
-          const textboxes = [
-            {
-              text: "Sample Text - Edit Me!",
-              left: 20,
-              top: 20,
-              width: 200,
-              fontSize: 24,
-              fill: "#ff6b6b",
-              fontFamily: "Arial",
-            },
-            {
-              text: "Header Text",
-              left: viewport.width / 2 - 100,
-              top: 15,
-              width: 200,
-              fontSize: 32,
-              fill: "#4dabf7",
-              fontFamily: "Georgia",
-            },
-            {
-              text: "Notes",
-              left: viewport.width - 170,
-              top: 20,
-              width: 150,
-              fontSize: 18,
-              fill: "#51cf66",
-              fontFamily: "Verdana",
-            },
-            {
-              text: "Footer Info",
-              left: 20,
-              top: viewport.height - 60,
-              width: 180,
-              fontSize: 16,
-              fill: "#ffd43b",
-              fontFamily: "Arial",
-            },
-            {
-              text: "Centered Comment",
-              left: viewport.width / 2 - 120,
-              top: viewport.height / 2 - 30,
-              width: 180,
-              fontSize: 20,
-              fill: "#e599f7",
-              fontFamily: "Arial",
-            },
-          ];
+          const ratioX = viewport.width / parsedPage.width;
+          const ratioY = viewport.height / parsedPage.height;
 
-          const createdTextboxes = textboxes.map((config) => 
-            new Textbox(config.text, {
-              left: config.left,
-              top: config.top,
-              width: config.width,
-              fontSize: config.fontSize,
-              fill: config.fill,
-              fontFamily: config.fontFamily,
-              selectable: editMode,
-              editable: editMode,
-              evented: editMode,
-              visible: editMode,
+          const createdTextboxes = parsedPage.blocks.map((blk: ParsedBlock) =>
+            new Textbox(blk.text, {
+              left: blk.x * ratioX,
+              top: blk.y * ratioY,
+              width: Math.max(4, blk.width * ratioX),
+              fontSize: Math.max(4, blk.fontSize * ratioY),
+              lineHeight: blk.lineHeight,
+              fill: blk.fill,
+              fontFamily: blk.fontFamily,
+              fontWeight: blk.fontWeight,
+              selectable: true,
+              editable: true,
+              evented: true,
+              visible: true,
               hasControls: true,
               hasBorders: true,
               borderColor: "#3b82f6",
@@ -293,7 +297,6 @@ export function useFabricPageRender({
               padding: 2,
             })
           );
-
           createdTextboxes.forEach((textbox) => fabricCanvas.add(textbox));
           userObjectsRef.current = createdTextboxes;
         }

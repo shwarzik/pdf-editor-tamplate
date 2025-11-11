@@ -1,5 +1,6 @@
 import type { PDFDocumentProxy } from "pdfjs-dist/types/src/display/api";
 import { useFabricPageRender } from "../hooks/useFabricPageRender";
+import { usePdfStore } from "@/lib/store";
 
 interface PdfPageCanvasProps {
   doc: PDFDocumentProxy;
@@ -10,12 +11,15 @@ interface PdfPageCanvasProps {
 }
 
 export function PdfPageCanvas({ doc, pageNumber, zoom, rotation, editMode }: PdfPageCanvasProps) {
+  const parsedPages = usePdfStore((s) => s.parsedPages);
+  const pageMeta = parsedPages?.find((p) => p.pageNumber === pageNumber) || null;
   const { registerCanvas, isRendering } = useFabricPageRender({
     doc,
     pageNumber,
     zoom,
     rotation,
     editMode,
+    parsedPage: pageMeta ?? undefined,
   });
 
   return (

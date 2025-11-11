@@ -42,6 +42,8 @@ export default function Page() {
   const editMode = usePdfStore((state) => state.editMode);
   const setEditMode = usePdfStore((state) => state.setEditMode);
   const { doc, pageCount, loading, error } = usePdfDocument(fileUrl);
+  const setParseError = usePdfStore((s) => s.setParseError);
+  const parseError = usePdfStore((s) => s.parseError);
   const [scrollAreaHeight, setScrollAreaHeight] = useState<number | null>(null);
   const scrollAreaRef = useRef<HTMLDivElement>(null);
   const simpleBarRef = useRef<SimpleBarCore | null>(null);
@@ -279,6 +281,22 @@ export default function Page() {
       resetRotations();
       pendingFitRef.current = true;
       setScrollAreaHeight(null);
+      // Kick off backend parse
+      void (async () => {
+        try {
+          const form = new FormData();
+          form.append("file", file);
+          const res = await fetch("/api/parse", { method: "POST", body: form });
+          if (!res.ok) throw new Error(`Parse failed: ${res.status}`);
+          const data = (await res.json()) as { pages: any[] };
+          usePdfStore.getState().setParsedPages(data.pages);
+          setParseError(null);
+        } catch (err) {
+          console.error("Failed to parse PDF text blocks", err);
+          usePdfStore.getState().setParsedPages(null);
+          setParseError(err instanceof Error ? err.message : "Parse failed");
+        }
+      })();
     }
   };
 
@@ -421,6 +439,7 @@ export default function Page() {
                 >
                   {loading && <DocumentSkeleton />}
                   {error && <ErrorBanner message={error} />}
+                  {parseError && <ErrorBanner message={parseError} />}
                   {contentReady && doc && (
                     <PdfViewer
                       doc={doc}
