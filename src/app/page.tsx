@@ -288,6 +288,7 @@ export default function Page() {
           form.append("file", file);
           const res = await fetch("/api/parse", { method: "POST", body: form });
           if (!res.ok) throw new Error(`Parse failed: ${res.status}`);
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
           const data = (await res.json()) as { pages: any[] };
           usePdfStore.getState().setParsedPages(data.pages);
           setParseError(null);

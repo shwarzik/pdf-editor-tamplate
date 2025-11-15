@@ -26,6 +26,10 @@ interface ParsedPage {
 }
 
 const COLOR_FALLBACK = "#1a1a1a";
+const DEFAULT_LINE_HEIGHT = 1.2;
+const MIN_LINE_HEIGHT = 1;
+const MAX_LINE_HEIGHT = 3;
+const BLOCK_WIDTH_CALIBRATION = 4;
 
 const toHexComponent = (value: number) => {
   const normalized = value > 1 ? value : value * 255;
@@ -36,6 +40,19 @@ const toHexComponent = (value: number) => {
 const rgbToHex = (r: number, g: number, b: number): string => {
   return `#${toHexComponent(r)}${toHexComponent(g)}${toHexComponent(b)}`;
 };
+
+type StructuredPoint = { x: number; y: number };
+type StructuredQuad = {
+  ul?: StructuredPoint;
+  ur?: StructuredPoint;
+  ll?: StructuredPoint;
+  lr?: StructuredPoint;
+} & Partial<Record<number, number>>;
+type StructuredFont = {
+  getName?: () => string;
+  toString?: () => string;
+};
+type StructuredColor = [number, number, number] | number[] | null | undefined;
 
 export async function POST(req: NextRequest) {
   try {
@@ -82,11 +99,21 @@ export async function POST(req: NextRequest) {
       // Walk the structured text to extract detailed information
       // Signature: onChar(char: string, origin: Point, font: Font, size: number, quad: Quad, color: Color)
       sText.walk({
-        onChar: (char: string, origin: any, font: any, size: number, quad: any, color: any) => {
+        onChar: (
+          char: string,
+          origin: unknown,
+          font: unknown,
+          size: number,
+          quad: unknown,
+          color: unknown
+        ) => {
+          const quadData = quad as StructuredQuad;
+          const fontData = font as StructuredFont;
+          const colorData = color as StructuredColor;
           if (char && char.trim() !== "") {
             // quad is a Quad object with points defining the character bounding box
             // Typically quad has properties like ul (upper-left), ur, ll (lower-left), lr
-            const bbox = quad || { ul: { x: 0, y: 0 }, lr: { x: 0, y: 0 } };
+            const bbox = quadData || { ul: { x: 0, y: 0 }, lr: { x: 0, y: 0 } };
             const x = bbox.ul?.x ?? bbox[0] ?? 0;
             const y = bbox.ul?.y ?? bbox[1] ?? 0;
             const x2 = bbox.lr?.x ?? bbox[2] ?? (x + 10);
@@ -96,7 +123,7 @@ export async function POST(req: NextRequest) {
 
             // Extract font attributes
             const fontSize = size || 12;
-            let fontName = font?.getName?.() || font?.toString?.() || "sans-serif";
+            let fontName = fontData?.getName?.() || fontData?.toString?.() || "sans-serif";
             
             // Clean up font family name - PDF fonts often have format like "BAAAAA+FontName" or "FontName-Bold"
             // Remove subset prefix (6 uppercase letters + plus sign)
@@ -136,8 +163,8 @@ export async function POST(req: NextRequest) {
 
             // Extract color from MuPDF (color is RGB array [r, g, b] in 0-1 range)
             let fill = COLOR_FALLBACK;
-            if (color && Array.isArray(color) && color.length >= 3) {
-              fill = rgbToHex(color[0], color[1], color[2]);
+            if (colorData && Array.isArray(colorData) && colorData.length >= 3) {
+              fill = rgbToHex(colorData[0], colorData[1], colorData[2]);
             }
 
             textItems.push({
@@ -150,7 +177,7 @@ export async function POST(req: NextRequest) {
               fontFamily,
               fontWeight,
               fill,
-              lineHeight: 1.2,
+              lineHeight: DEFAULT_LINE_HEIGHT,
             });
           }
         }
@@ -232,6 +259,48 @@ export async function POST(req: NextRequest) {
         lineHeight: number;
         fill: string;
       };
+
+      const clampLineHeight = (value: number) =>
+        Math.min(Math.max(value, MIN_LINE_HEIGHT), MAX_LINE_HEIGHT);
+
+      const deriveParagraphLineHeight = (
+        paragraphLines: ParagraphLine[],
+        blockHeight: number
+      ) => {
+        if (paragraphLines.length === 0) {
+          return DEFAULT_LINE_HEIGHT;
+        }
+
+        const fontSize = paragraphLines[0].fontSize || 1;
+        if (paragraphLines.length === 1) {
+          const single = paragraphLines[0];
+          const candidates = [
+            single.lineHeight,
+            single.height / fontSize,
+            blockHeight / fontSize,
+          ].filter((val) => Number.isFinite(val) && val > 0) as number[];
+          const estimate = candidates.length
+            ? candidates.reduce((sum, val) => sum + val, 0) / candidates.length
+            : DEFAULT_LINE_HEIGHT;
+          return clampLineHeight(estimate);
+        }
+
+        const ordered = [...paragraphLines].sort((a, b) => a.y - b.y);
+        const verticalSteps: number[] = [];
+        for (let idx = 0; idx < ordered.length - 1; idx++) {
+          const delta = ordered[idx + 1].y - ordered[idx].y;
+          if (delta > 0) verticalSteps.push(delta);
+        }
+
+        const avgStep = verticalSteps.length
+          ? verticalSteps.reduce((sum, value) => sum + value, 0) / verticalSteps.length
+          : blockHeight / Math.max(paragraphLines.length - 1, 1);
+        const avgPerLine = blockHeight / paragraphLines.length;
+        const normalizedGap = avgStep / fontSize;
+        const normalizedBlock = avgPerLine / fontSize;
+        const blended = (normalizedGap + normalizedBlock) / 2;
+        return clampLineHeight(Number.isFinite(blended) ? blended : DEFAULT_LINE_HEIGHT);
+      };
       
       const resultBlocks: ParsedBlock[] = [];
       let currentParagraph: ParagraphLine[] = [];
@@ -283,16 +352,21 @@ export async function POST(req: NextRequest) {
             const paragraphHeight =
               Math.max(...currentParagraph.map((l) => l.y + l.height)) - paragraphMinY;
 
+            const normalizedLineHeight = deriveParagraphLineHeight(
+              currentParagraph,
+              paragraphHeight
+            );
+
             resultBlocks.push({
               text: paragraphText,
               x: paragraphMinX,
               y: paragraphMinY,
-              width: paragraphMaxX - paragraphMinX,
+              width: Math.max(0, paragraphMaxX - paragraphMinX + BLOCK_WIDTH_CALIBRATION),
               height: paragraphHeight,
               fontSize: currentParagraph[0].fontSize,
               fontFamily: currentParagraph[0].fontFamily,
               fontWeight: currentParagraph[0].fontWeight,
-              lineHeight: currentParagraph[0].lineHeight,
+              lineHeight: normalizedLineHeight,
               fill: currentParagraph[0].fill,
             });
 
@@ -311,16 +385,21 @@ export async function POST(req: NextRequest) {
         const paragraphHeight =
           Math.max(...currentParagraph.map((l) => l.y + l.height)) - paragraphMinY;
         
+        const normalizedLineHeight = deriveParagraphLineHeight(
+          currentParagraph,
+          paragraphHeight
+        );
+
         resultBlocks.push({
           text: paragraphText,
           x: paragraphMinX,
           y: paragraphMinY,
-          width: paragraphMaxX - paragraphMinX,
+          width: Math.max(0, paragraphMaxX - paragraphMinX + BLOCK_WIDTH_CALIBRATION),
           height: paragraphHeight,
           fontSize: currentParagraph[0].fontSize,
           fontFamily: currentParagraph[0].fontFamily,
           fontWeight: currentParagraph[0].fontWeight,
-          lineHeight: currentParagraph[0].lineHeight,
+          lineHeight: normalizedLineHeight,
           fill: currentParagraph[0].fill,
         });
       }
@@ -329,8 +408,9 @@ export async function POST(req: NextRequest) {
     }
 
     return NextResponse.json({ pages });
-  } catch (err: any) {
+  } catch (err: unknown) {
     console.error("/api/parse error", err);
-    return NextResponse.json({ error: err?.message ?? "Parse failed" }, { status: 500 });
+    const message = err instanceof Error ? err.message : "Parse failed";
+    return NextResponse.json({ error: message }, { status: 500 });
   }
 }
