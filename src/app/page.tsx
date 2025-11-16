@@ -10,7 +10,7 @@ import {
   type ChangeEvent,
   type ComponentType,
 } from "react";
-import { Upload, ZoomIn, ZoomOut, Edit3 } from "lucide-react";
+import { Upload, ZoomIn, ZoomOut, Edit3, Eye, Download } from "lucide-react";
 import { usePdfStore } from "@/lib/store";
 import type { PdfViewerProps } from "./pdf/PdfViewer";
 import { ZOOM_MIN, ZOOM_MAX, ZOOM_STEP, ZOOM_DEFAULT } from "@/lib/viewer";
@@ -21,6 +21,8 @@ import SimpleBar from "simplebar-react";
 import type SimpleBarCore from "simplebar-core";
 import "simplebar-react/dist/simplebar.min.css";
 import { usePdfDocument } from "./pdf/hooks/usePdfDocument";
+import { usePdfExportStore } from "@/lib/export-store";
+import type { SavePayload } from "@/lib/pdf-export-types";
 
 const PdfViewer = dynamic<PdfViewerProps>(() => import("./pdf/PdfViewer"), {
   ssr: false,
@@ -50,6 +52,11 @@ export default function Page() {
   const activePageRef = useRef<number | null>(null);
   const [activePage, setActivePage] = useState<number | null>(null);
   const pendingFitRef = useRef(false);
+  const [originalFile, setOriginalFile] = useState<File | null>(null);
+  const captureAllPages = usePdfExportStore((state) => state.captureAllPages);
+  const [previewing, setPreviewing] = useState(false);
+  const [downloading, setDownloading] = useState(false);
+  const [exportError, setExportError] = useState<string | null>(null);
 
   const hasDocument = useMemo(() => Boolean(fileUrl), [fileUrl]);
   const pageNumbers = useMemo(() => {
@@ -64,6 +71,15 @@ export default function Page() {
         URL.revokeObjectURL(fileUrl);
       }
     };
+  }, [fileUrl]);
+
+  useEffect(() => {
+    setExportError(null);
+    setPreviewing(false);
+    setDownloading(false);
+    if (!fileUrl) {
+      setOriginalFile(null);
+    }
   }, [fileUrl]);
 
   useEffect(() => {
@@ -277,6 +293,8 @@ export default function Page() {
       const url = URL.createObjectURL(file);
       setFileUrl(url);
       setFileName(file.name);
+      setOriginalFile(file);
+      setExportError(null);
       setZoom(ZOOM_DEFAULT);
       resetRotations();
       pendingFitRef.current = true;
@@ -300,6 +318,162 @@ export default function Page() {
       })();
     }
   };
+
+  const ensureOriginalPdf = useCallback(async () => {
+    if (originalFile) {
+      return originalFile;
+    }
+    if (!fileUrl) {
+      return null;
+    }
+    try {
+      const response = await fetch(fileUrl);
+      const blob = await response.blob();
+      const derived = new File([blob], fileName ?? "document.pdf", {
+        type: blob.type || "application/pdf",
+      });
+      setOriginalFile(derived);
+      return derived;
+    } catch (error) {
+      console.error("Failed to retrieve source PDF", error);
+      return null;
+    }
+  }, [fileName, fileUrl, originalFile]);
+
+  const prepareExportFormData = useCallback(async () => {
+    const basePdf = await ensureOriginalPdf();
+    if (!basePdf) {
+      throw new Error("Upload a PDF before exporting edits.");
+    }
+
+    const exportedPages = captureAllPages().map((page) => ({
+      ...page,
+      overlays: page.overlays.filter((overlay) => overlay.opacity > 0.01),
+    }));
+
+    if (exportedPages.length === 0 && pageCount > 0) {
+      throw new Error("Pages are still rendering. Please try again in a moment.");
+    }
+
+    const dirtyPages = exportedPages.filter((page) => page.overlays.length > 0);
+
+    const payload = {
+      fileName: fileName ?? basePdf.name,
+      pages: dirtyPages,
+    } satisfies SavePayload;
+
+    const formData = new FormData();
+    formData.append("file", basePdf);
+    formData.append("payload", JSON.stringify(payload));
+    return { formData, suggestedName: payload.fileName ?? "document" };
+  }, [captureAllPages, ensureOriginalPdf, fileName, pageCount]);
+
+  const handlePreview = useCallback(async () => {
+    if (!hasDocument) {
+      return;
+    }
+    setExportError(null);
+    setPreviewing(true);
+    try {
+      const { formData } = await prepareExportFormData();
+      const response = await fetch("/api/save?mode=preview", {
+        method: "POST",
+        body: formData,
+      });
+
+      if (!response.ok) {
+        let message = "Unable to save document.";
+        try {
+          const details = await response.json();
+          if (details?.error) {
+            message = details.error;
+          }
+        } catch {
+          const fallback = await response.text();
+          if (fallback) {
+            message = fallback;
+          }
+        }
+        throw new Error(message);
+      }
+
+      const payload = (await response.json()) as {
+        previewUrl: string;
+        fileName: string;
+      };
+
+      const previewUrl = payload.previewUrl.startsWith("http")
+        ? payload.previewUrl
+        : `${window.location.origin}${payload.previewUrl}`;
+
+      const previewWindow = window.open(previewUrl, "_blank", "noopener,noreferrer");
+      if (!previewWindow) {
+        const link = document.createElement("a");
+        link.href = previewUrl;
+        link.target = "_blank";
+        link.rel = "noreferrer noopener";
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+      }
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Unable to generate preview.";
+      setExportError(message);
+    } finally {
+      setPreviewing(false);
+    }
+  }, [hasDocument, prepareExportFormData]);
+
+  const handleDownload = useCallback(async () => {
+    if (!hasDocument) {
+      return;
+    }
+    setExportError(null);
+    setDownloading(true);
+    try {
+      const { formData, suggestedName } = await prepareExportFormData();
+      const response = await fetch("/api/save?mode=download", {
+        method: "POST",
+        body: formData,
+      });
+
+      if (!response.ok) {
+        let message = "Unable to download document.";
+        try {
+          const details = await response.json();
+          if (details?.error) {
+            message = details.error;
+          }
+        } catch {
+          const fallback = await response.text();
+          if (fallback) {
+            message = fallback;
+          }
+        }
+        throw new Error(message);
+      }
+
+      const blob = await response.blob();
+      const blobUrl = URL.createObjectURL(blob);
+      const disposition = response.headers.get("content-disposition");
+      const downloadNameMatch = disposition?.match(/filename="?([^";]+)"?/i);
+      const downloadName = downloadNameMatch?.[1] ?? `${suggestedName ?? "document"}`;
+
+      const link = document.createElement("a");
+      link.href = blobUrl;
+      link.download = downloadName;
+      link.rel = "noopener";
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(blobUrl);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Unable to download PDF.";
+      setExportError(message);
+    } finally {
+      setDownloading(false);
+    }
+  }, [hasDocument, prepareExportFormData]);
 
   const handleRotate = useCallback(
     (pageNumber: number, delta: number) => {
@@ -407,7 +581,33 @@ export default function Page() {
             <Edit3 className="h-5 w-5" />
             <span>{editMode ? "Editing" : "Edit"}</span>
           </button>
+
+          <button
+            type="button"
+            onClick={handlePreview}
+            disabled={!hasDocument || previewing}
+            className="flex items-center gap-2 rounded-2xl border border-emerald-500/70 bg-emerald-500/15 px-4 py-3 text-sm font-semibold text-emerald-100 transition hover:bg-emerald-500/30 disabled:cursor-not-allowed disabled:opacity-40"
+          >
+            <Eye className="h-5 w-5" />
+            <span>{previewing ? "Rendering…" : "Preview"}</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={handleDownload}
+            disabled={!hasDocument || downloading}
+            className="flex items-center gap-2 rounded-2xl border border-fuchsia-500/70 bg-fuchsia-500/15 px-4 py-3 text-sm font-semibold text-fuchsia-100 transition hover:bg-fuchsia-500/30 disabled:cursor-not-allowed disabled:opacity-40"
+          >
+            <Download className="h-5 w-5" />
+            <span>{downloading ? "Downloading…" : "Download"}</span>
+          </button>
         </div>
+
+        {exportError && (
+          <div className="mt-2">
+            <ErrorBanner message={exportError} />
+          </div>
+        )}
 
         <div className="mt-1 flex flex-1 flex-col gap-4">
           {hasDocument ? (

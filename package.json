@@ -13,6 +13,7 @@
     "lucide-react": "^0.553.0",
     "mupdf": "^1.26.4",
     "next": "16.0.1",
+    "pdf-lib": "^1.17.1",
     "pdfjs-dist": "^5.4.394",
     "react": "19.2.0",
     "react-dom": "19.2.0",

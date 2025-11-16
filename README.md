@@ -9,6 +9,7 @@ Stage 1 delivers a browser-based PDF viewer built with Next.js 14, pdf.js, Fabri
 - Zoom between 50% and 300% in 10% steps (with a single-click reset to 100%).
 - Rotate each page clockwise in 90° steps from the minimap sidebar, with Fabric automatically redrawing the background image layer.
 - Shared viewer state managed through a lightweight Zustand store.
+- Generate an updated, text-backed PDF via the Preview/Download buttons, which post overlay metadata to `/api/save` so the server can rewrite the source document instead of flattening it.
 
 ## Project Structure
 
@@ -34,6 +35,12 @@ npm run dev
 ```
 
 Visit [http://localhost:3000](http://localhost:3000) to upload and interact with a PDF.
+
+### Previewing & downloading edited PDFs
+
+1. Upload a PDF and make edits in Fabric's edit mode (modified text is collected from the overlay textboxes).
+2. Click **Preview** to generate an on-disk copy under `public/previews/` and open it in a new tab, or **Download** to stream the regenerated PDF directly.
+3. Both actions send the original PDF plus overlay metadata to `/api/save`, which redraws the affected text regions (with selectable text) so the exported file can be re-uploaded and edited again.
 
 ## Usage Notes
 

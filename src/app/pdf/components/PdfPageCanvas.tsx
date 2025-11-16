@@ -1,6 +1,8 @@
+import { useEffect } from "react";
 import type { PDFDocumentProxy } from "pdfjs-dist/types/src/display/api";
 import { useFabricPageRender } from "../hooks/useFabricPageRender";
 import { usePdfStore } from "@/lib/store";
+import { usePdfExportStore } from "@/lib/export-store";
 
 interface PdfPageCanvasProps {
   doc: PDFDocumentProxy;
@@ -13,7 +15,7 @@ interface PdfPageCanvasProps {
 export function PdfPageCanvas({ doc, pageNumber, zoom, rotation, editMode }: PdfPageCanvasProps) {
   const parsedPages = usePdfStore((s) => s.parsedPages);
   const pageMeta = parsedPages?.find((p) => p.pageNumber === pageNumber) || null;
-  const { registerCanvas, isRendering } = useFabricPageRender({
+  const { registerCanvas, isRendering, exportPageData } = useFabricPageRender({
     doc,
     pageNumber,
     zoom,
@@ -21,6 +23,13 @@ export function PdfPageCanvas({ doc, pageNumber, zoom, rotation, editMode }: Pdf
     editMode,
     parsedPage: pageMeta ?? undefined,
   });
+  const registerPageExporter = usePdfExportStore((s) => s.registerPageExporter);
+  const unregisterPageExporter = usePdfExportStore((s) => s.unregisterPageExporter);
+
+  useEffect(() => {
+    registerPageExporter(pageNumber, exportPageData);
+    return () => unregisterPageExporter(pageNumber);
+  }, [exportPageData, pageNumber, registerPageExporter, unregisterPageExporter]);
 
   return (
     <div

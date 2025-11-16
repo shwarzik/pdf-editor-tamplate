@@ -69,6 +69,10 @@ coverage/
 *.zip
 *.log
 
+# Generated previews
+public/previews/*
+!public/previews/.gitkeep
+
 # ESLint cache
 .eslintcache
 

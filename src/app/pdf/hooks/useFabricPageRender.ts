@@ -9,6 +9,11 @@ import type {
 import { type Canvas as FabricCanvas, type FabricImage, type FabricObject } from "fabric";
 import { createFabricTextBlock } from "../fabric/FabricTextBlock";
 import type { ParsedBlock, ParsedPage } from "@/lib/store";
+import type {
+  OverlayBounds,
+  PageExportPayload,
+  TextOverlayExport,
+} from "@/lib/pdf-export-types";
 
 const OVERLAY_HEIGHT_PADDING = 2;
 const ROTATION_STEP_DEGREES = 90;
@@ -18,17 +23,9 @@ type NormalizedPoint = {
   y: number;
 };
 
-type OriginalBounds = {
-  leftRatio: number;
-  topRatio: number;
-  widthRatio: number;
-  heightRatio: number;
-  captureRotation: number;
-};
-
 type OverlaySerializedMeta = {
   isRevealed?: boolean;
-  originalBounds?: OriginalBounds;
+  originalBounds?: OverlayBounds;
 };
 
 const normalizeRotationSteps = (value: number) => {
@@ -87,6 +84,7 @@ export interface UseFabricPageRenderArgs {
 export interface UseFabricPageRenderResult {
   registerCanvas: (element: HTMLCanvasElement | null) => void;
   isRendering: boolean;
+  exportPageData: () => Omit<PageExportPayload, "pageNumber"> | null;
 }
 
 export function useFabricPageRender({
@@ -114,7 +112,7 @@ export function useFabricPageRender({
       FabricObject,
       {
         backgroundPatch?: FabricObject;
-        originalBounds?: OriginalBounds;
+        originalBounds?: OverlayBounds;
         isRevealed?: boolean;
         handlers?: {
           selected: () => void;
@@ -211,7 +209,7 @@ export function useFabricPageRender({
         return null;
       }
 
-      const bounds: OriginalBounds = {
+      const bounds: OverlayBounds = {
         leftRatio: rect.left / viewportSize.width,
         topRatio: rect.top / viewportSize.height,
         widthRatio: rect.width / viewportSize.width,
@@ -832,5 +830,78 @@ export function useFabricPageRender({
     canvasRef.current = element;
   }, []);
 
-  return { registerCanvas, isRendering };
+  const exportPageData = useCallback(() => {
+    const fabricCanvas = fabricRef.current;
+    if (!fabricCanvas) {
+      return null;
+    }
+
+    const pageWidth = fabricCanvas.getWidth();
+    const pageHeight = fabricCanvas.getHeight();
+    const overlays: TextOverlayExport[] = [];
+
+    const objects = fabricCanvas.getObjects();
+    objects.forEach((object) => {
+      if (!isTextbox(object)) {
+        return;
+      }
+
+      const textbox = object as typeof object & { text?: string };
+      const meta = ensureTextboxMeta(textbox);
+      const opacity = typeof textbox.opacity === "number" ? textbox.opacity : 1;
+      if (!meta.isRevealed || opacity <= 0) {
+        return;
+      }
+
+      const textValue = typeof textbox.text === "string" ? textbox.text : "";
+      if (!textValue.trim()) {
+        return;
+      }
+
+      textbox.setCoords();
+      const bounds = textbox.getBoundingRect(true);
+      const left = bounds?.left ?? textbox.left ?? 0;
+      const top = bounds?.top ?? textbox.top ?? 0;
+      const boxWidth = bounds?.width ?? textbox.width ?? 0;
+      const boxHeight = bounds?.height ?? textbox.height ?? 0;
+
+      if (boxWidth <= 0 || boxHeight <= 0) {
+        return;
+      }
+
+      let fontWeight: "normal" | "bold" = "normal";
+      if (textbox.fontWeight === "bold" || textbox.fontWeight === 700) {
+        fontWeight = "bold";
+      } else if (typeof textbox.fontWeight === "number" && textbox.fontWeight >= 600) {
+        fontWeight = "bold";
+      }
+
+      overlays.push({
+        text: textValue,
+        left,
+        top,
+        width: boxWidth,
+        height: boxHeight,
+        fontSize: typeof textbox.fontSize === "number" ? textbox.fontSize : 12,
+        lineHeight:
+          typeof textbox.lineHeight === "number" && Number.isFinite(textbox.lineHeight)
+            ? textbox.lineHeight
+            : 1.2,
+        fontFamily: typeof textbox.fontFamily === "string" ? textbox.fontFamily : "Helvetica",
+        fontWeight,
+        fill: typeof textbox.fill === "string" ? textbox.fill : "#000000",
+        opacity,
+        originalBounds: meta.originalBounds,
+      });
+    });
+
+    return {
+      width: pageWidth,
+      height: pageHeight,
+      rotation,
+      overlays,
+    } satisfies Omit<PageExportPayload, "pageNumber">;
+  }, [ensureTextboxMeta, isTextbox, rotation]);
+
+  return { registerCanvas, isRendering, exportPageData };
 }
